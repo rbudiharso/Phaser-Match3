@@ -1,0 +1,12 @@
+{
+  "name": "bejewel",
+  "private": true,
+  "dependencies": {
+    "bootstrap": "~3.0.3",
+    "modernizr": "~2.6.2",
+    "jquery": "~1.11.0",
+    "phaser-official": "~2.0.5",
+    "underscore": "~1.6.0"
+  },
+  "devDependencies": {}
+}
