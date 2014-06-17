@@ -43,20 +43,11 @@
         return y * GEM_HEIGHT_SPACED + GEM_SPACE;
     }
 
-    function gemX(x) {
-        return Math.round((x - GEM_SPACE) / GEM_WIDTH_SPACED);
-    }
-
-    function gemY(y) {
-        return Math.round((y - GEM_SPACE) / GEM_HEIGHT_SPACED);
-    }
-
     function randomGem () {
         return sample(['gemred', 'gemblue', 'gemgreen']);
     }
 
     function moveGemTo (gem, destX, destY, callback) {
-        //console.log('before', gem.x, gem.y);
         gem.state = 'moving';
         var tween = game.add.tween(gem).to({x: destX, y: destY}, 100, Phaser.Easing.Linear.None, true);
         tween.onComplete.add(callback, gem);
@@ -66,7 +57,7 @@
         return {
             x: Math.round(x / GEM_WIDTH_SPACED),
             y: Math.round(y / GEM_HEIGHT_SPACED)
-        }
+        };
     }
 
     mainState = {
@@ -104,16 +95,25 @@
                     return gem.state === 'ready' && (gem.x !== gem.destX || gem.y !== gem.destY);
                 });
                 if (allReady) {
-                    gemToBeSwapped.forEach(function (gem) {
-                        moveGemTo(gem, gem.destX, gem.destY, function () {
-                            //console.log('after', gem.x, gem.y);
-                            this.state = 'moved';
+                    if (gemToBeSwapped[0].reverting) {
+                        gemToBeSwapped.forEach(function (gem) {
+                            moveGemTo(gem, gem.destX, gem.destY, function () {
+                                this.state = 'moved';
+                                delete this.reverting;
+                            });
                         });
-                    });
+                        return gemToBeSwapped = [];
+                    } else {
+                        gemToBeSwapped.forEach(function (gem) {
+                            moveGemTo(gem, gem.destX, gem.destY, function () {
+                                this.state = 'moved';
+                            });
+                        });
+                    }
                 }
 
                 var allMoved = _.every(gemToBeSwapped, function (gem) {
-                    return gem.state === 'moved';
+                    return gem.state === 'moved' && !gem.reverting;
                 });
                 if (allMoved) {
                     var equalCounts = [];
@@ -121,41 +121,39 @@
                     var gemsInColumns = [];
 
                     _.each(gemToBeSwapped, function (gem) {
-                        //console.log('initial '+gem.klass);
                         var _gemInRows = [gem];
                         var _gemInColumns = [gem];
                         var westSideGemsCount = this.adjacent(gem.x, gem.y, gem.klass, 'west', function () {
                             _gemInRows.push(this);
                         });
-                        //console.log(gem.klass+' west '+westSideGemsCount);
                         var eastSideGemsCount = this.adjacent(gem.x, gem.y, gem.klass, 'east', function () {
                             _gemInRows.push(this);
                         });
-                        //console.log(gem.klass+' east '+eastSideGemsCount);
                         var northSideGemsCount = this.adjacent(gem.x, gem.y, gem.klass, 'north', function () {
                             _gemInColumns.push(this);
                         });
-                        //console.log(gem.klass+' north '+northSideGemsCount);
                         var southSideGemsCount = this.adjacent(gem.x, gem.y, gem.klass, 'south', function () {
                             _gemInColumns.push(this);
                         });
-                        //console.log(gem.klass+' south '+southSideGemsCount);
 
                         gemsInRows.push(_gemInRows);
                         gemsInColumns.push(_gemInColumns);
 
-                        equalCounts.push(1 + westSideGemsCount.length + eastSideGemsCount.length);
-                        equalCounts.push(1 + northSideGemsCount.length + southSideGemsCount.length);
+                        equalCounts.push(1 + westSideGemsCount + eastSideGemsCount);
+                        equalCounts.push(1 + northSideGemsCount + southSideGemsCount);
                     }, this);
 
                     // return gem to its original position if no available match found
-                    if (Math.max.apply(null, equalCounts) < 3) {
-                        //sourceX = gemToBeSwapped[0].x;
-                        //sourceY = gemToBeSwapped[0].y;
-                        //gemToBeSwapped[0].x = gemToBeSwapped[1].x;
-                        //gemToBeSwapped[0].y = gemToBeSwapped[1].y;
-                        //gemToBeSwapped[1].x = sourceX;
-                        //gemToBeSwapped[1].y = sourceY;
+                    if (gemToBeSwapped.length && Math.max.apply(null, equalCounts) < 3) {
+                        gemToBeSwapped[0].state = 'ready';
+                        gemToBeSwapped[0].reverting = true;
+                        gemToBeSwapped[0].destX = gemToBeSwapped[1].x;
+                        gemToBeSwapped[0].destY = gemToBeSwapped[1].y;
+                        gemToBeSwapped[1].state = 'ready';
+                        gemToBeSwapped[1].reverting = true;
+                        gemToBeSwapped[1].destX = gemToBeSwapped[0].x;
+                        gemToBeSwapped[1].destY = gemToBeSwapped[0].y;
+                        return;
                     }
 
                     // remove matched gems
