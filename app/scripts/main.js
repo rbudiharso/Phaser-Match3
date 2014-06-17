@@ -1,5 +1,5 @@
 /* jshint browser: true */
-/* global Phaser: true */
+/* global Phaser: true, _: true */
 'use strict';
 
 (function () {
@@ -14,7 +14,13 @@
     var BOARD_HEIGHT = GEM_HEIGHT_SPACED * BOARD_ROW + GEM_SPACE;
     var mainState = {};
     var game = new Phaser.Game(BOARD_WIDTH, BOARD_HEIGHT, Phaser.AUTO, 'game');
-    var swappedGem = [];
+    var gemToBeSwapped = [];
+    var MAP = {
+        north: { x: 0, y: -1 },
+        south: { x: 0, y: 1 },
+        east: { x: 1, y: 0 },
+        west: { x: -1, y: 0 },
+    };
 
     function boardLoop (callback, context) {
         for (var y = 0; y < BOARD_ROW; y ++) {
@@ -38,15 +44,29 @@
     }
 
     function gemX(x) {
-        return (x - GEM_SPACE) / GEM_WIDTH_SPACED;
+        return Math.round((x - GEM_SPACE) / GEM_WIDTH_SPACED);
     }
 
     function gemY(y) {
-        return (y - GEM_SPACE) / GEM_HEIGHT_SPACED;
+        return Math.round((y - GEM_SPACE) / GEM_HEIGHT_SPACED);
     }
 
     function randomGem () {
         return sample(['gemred', 'gemblue', 'gemgreen']);
+    }
+
+    function moveGemTo (gem, destX, destY, callback) {
+        //console.log('before', gem.x, gem.y);
+        gem.state = 'moving';
+        var tween = game.add.tween(gem).to({x: destX, y: destY}, 100, Phaser.Easing.Linear.None, true);
+        tween.onComplete.add(callback, gem);
+    }
+
+    function coordToGrid(x, y) {
+        return {
+            x: Math.round(x / GEM_WIDTH_SPACED),
+            y: Math.round(y / GEM_HEIGHT_SPACED)
+        }
     }
 
     mainState = {
@@ -67,8 +87,8 @@
                 var klass, northGems, westGems, gem;
                 do {
                     klass = randomGem();
-                    northGems = this.adjacent(x, y, klass, 'north');
-                    westGems = this.adjacent(x, y, klass, 'west');
+                    northGems = this.adjacent((x*GEM_WIDTH_SPACED), (y*GEM_HEIGHT_SPACED), klass, 'north');
+                    westGems = this.adjacent((x*GEM_WIDTH_SPACED), (y*GEM_HEIGHT_SPACED), klass, 'west');
                 } while (northGems >= 2 || westGems >= 2);
                 gem = this.gems.create(boardX(x), boardY(y), klass);
                 gem.klass = klass;
@@ -78,64 +98,81 @@
         },
 
         update: function () {
-            if (swappedGem.length === 2) {
-                var equalCounts = [];
-                var gemsInRows = [];
-                var gemsInColumns = [];
+            if (gemToBeSwapped.length === 2) {
 
-                // swap gems
-                var sourceX = swappedGem[0].x;
-                var sourceY = swappedGem[0].y;
-                swappedGem[0].x = swappedGem[1].x;
-                swappedGem[0].y = swappedGem[1].y;
-                swappedGem[1].x = sourceX;
-                swappedGem[1].y = sourceY;
-                swappedGem.forEach(function (gem) {
-                    var _gemInRows = [gem];
-                    var _gemInColumns = [gem];
-                    var westSideGemsCount = this.adjacent(gemX(gem.x), gemY(gem.y), gem.klass, 'west', function (gem) {
-                        _gemInRows.push(gem);
+                var allReady = _.every(gemToBeSwapped, function (gem) {
+                    return gem.state === 'ready' && (gem.x !== gem.destX || gem.y !== gem.destY);
+                });
+                if (allReady) {
+                    gemToBeSwapped.forEach(function (gem) {
+                        moveGemTo(gem, gem.destX, gem.destY, function () {
+                            //console.log('after', gem.x, gem.y);
+                            this.state = 'moved';
+                        });
                     });
-                    var eastSideGemsCount = this.adjacent(gemX(gem.x), gemY(gem.y), gem.klass, 'east', function (gem) {
-                        _gemInRows.push(gem);
-                    });
-                    var northSideGemsCount = this.adjacent(gemX(gem.x), gemY(gem.y), gem.klass, 'north', function (gem) {
-                        _gemInColumns.push(gem);
-                    });
-                    var southSideGemsCount = this.adjacent(gemX(gem.x), gemY(gem.y), gem.klass, 'south', function (gem) {
-                        _gemInColumns.push(gem);
-                    });
-
-                    gemsInRows.push(_gemInRows);
-                    gemsInColumns.push(_gemInColumns);
-
-                    equalCounts.push(1 + westSideGemsCount.length + eastSideGemsCount.length);
-                    equalCounts.push(1 + northSideGemsCount.length + southSideGemsCount.length);
-                }.bind(this));
-
-                // return gem to its original position if no available match found
-                if (Math.max.apply(null, equalCounts) < 3) {
-                    sourceX = swappedGem[0].x;
-                    sourceY = swappedGem[0].y;
-                    swappedGem[0].x = swappedGem[1].x;
-                    swappedGem[0].y = swappedGem[1].y;
-                    swappedGem[1].x = sourceX;
-                    swappedGem[1].y = sourceY;
                 }
 
-                // remove matched gems
-                gemsInRows.forEach(function (row) {
-                    if (row.length > 2) {
-                        row.forEach(function (gem) { gem.kill(); });
-                    }
+                var allMoved = _.every(gemToBeSwapped, function (gem) {
+                    return gem.state === 'moved';
                 });
-                gemsInColumns.forEach(function (column) {
-                    if (column.length > 2) {
-                        column.forEach(function (gem) { gem.kill(); });
-                    }
-                });
+                if (allMoved) {
+                    var equalCounts = [];
+                    var gemsInRows = [];
+                    var gemsInColumns = [];
 
-                swappedGem = [];
+                    _.each(gemToBeSwapped, function (gem) {
+                        //console.log('initial '+gem.klass);
+                        var _gemInRows = [gem];
+                        var _gemInColumns = [gem];
+                        var westSideGemsCount = this.adjacent(gem.x, gem.y, gem.klass, 'west', function () {
+                            _gemInRows.push(this);
+                        });
+                        //console.log(gem.klass+' west '+westSideGemsCount);
+                        var eastSideGemsCount = this.adjacent(gem.x, gem.y, gem.klass, 'east', function () {
+                            _gemInRows.push(this);
+                        });
+                        //console.log(gem.klass+' east '+eastSideGemsCount);
+                        var northSideGemsCount = this.adjacent(gem.x, gem.y, gem.klass, 'north', function () {
+                            _gemInColumns.push(this);
+                        });
+                        //console.log(gem.klass+' north '+northSideGemsCount);
+                        var southSideGemsCount = this.adjacent(gem.x, gem.y, gem.klass, 'south', function () {
+                            _gemInColumns.push(this);
+                        });
+                        //console.log(gem.klass+' south '+southSideGemsCount);
+
+                        gemsInRows.push(_gemInRows);
+                        gemsInColumns.push(_gemInColumns);
+
+                        equalCounts.push(1 + westSideGemsCount.length + eastSideGemsCount.length);
+                        equalCounts.push(1 + northSideGemsCount.length + southSideGemsCount.length);
+                    }, this);
+
+                    // return gem to its original position if no available match found
+                    if (Math.max.apply(null, equalCounts) < 3) {
+                        //sourceX = gemToBeSwapped[0].x;
+                        //sourceY = gemToBeSwapped[0].y;
+                        //gemToBeSwapped[0].x = gemToBeSwapped[1].x;
+                        //gemToBeSwapped[0].y = gemToBeSwapped[1].y;
+                        //gemToBeSwapped[1].x = sourceX;
+                        //gemToBeSwapped[1].y = sourceY;
+                    }
+
+                    // remove matched gems
+                    gemsInRows.forEach(function (row) {
+                        if (row.length > 2) {
+                            row.forEach(function (gem) { gem.kill(); });
+                        }
+                    });
+                    gemsInColumns.forEach(function (column) {
+                        if (column.length > 2) {
+                            column.forEach(function (gem) { gem.kill(); });
+                        }
+                    });
+
+                    gemToBeSwapped = [];
+                }
+
             }
         },
 
@@ -146,7 +183,8 @@
         gemAt: function (x, y) {
             var _gem;
             this.gems.forEach(function (gem) {
-                if (gem.x === boardX(x) && gem.y === boardY(y)) {
+                var gridPos = coordToGrid(gem.x, gem.y);
+                if (x === gridPos.x && y === gridPos.y) {
                     _gem = gem;
                 }
             });
@@ -155,29 +193,32 @@
 
         adjacent: function _adjacent(x, y, klass, dir, callback) {
             var value = 0;
-            var map = {
-                north: { x: 0, y: -1 },
-                south: { x: 0, y: 1 },
-                east: { x: 1, y: 0 },
-                west: { x: -1, y: 0 },
-            };
             if (x <= 0 && y <= 0) { return value; }
-            var gem = this.gemAt((x + map[dir].x), (y + map[dir].y));
+
+            var gridPos = coordToGrid(x, y);
+            var gem = this.gemAt((gridPos.x + MAP[dir].x), (gridPos.y + MAP[dir].y));
+
             if (gem && klass === gem.klass) {
                 value += 1;
                 if (typeof callback === 'function') {
-                    callback.call(null, gem);
+                    callback.call(gem);
                 }
-                value += _adjacent.call(this, gemX(gem.x), gemY(gem.y), klass, dir, callback);
+                value += _adjacent.call(this, gem.x, gem.y, klass, dir, callback);
             }
             return value;
         },
 
         selectGem: function (gem) {
-            if (!swappedGem[0]) {
-                swappedGem[0] = gem;
+            if (!gemToBeSwapped[0]) {
+                gemToBeSwapped[0] = gem;
             } else {
-                swappedGem[1] = gem;
+                gemToBeSwapped[1] = gem;
+                gemToBeSwapped[0].state = 'ready';
+                gemToBeSwapped[0].destX = gemToBeSwapped[1].x;
+                gemToBeSwapped[0].destY = gemToBeSwapped[1].y;
+                gemToBeSwapped[1].state = 'ready';
+                gemToBeSwapped[1].destX = gemToBeSwapped[0].x;
+                gemToBeSwapped[1].destY = gemToBeSwapped[0].y;
             }
         },
 
