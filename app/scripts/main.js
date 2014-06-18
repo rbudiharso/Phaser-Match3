@@ -238,6 +238,7 @@
             ['gemred', 'gemblue', 'gemgreen'].forEach(function (name) {
                 game.load.image(name, '../images/'+name+'.png');
             }.bind(this));
+            game.load.image('particlwWhite', '../images/white.png');
         },
 
         create: function () {
@@ -299,7 +300,9 @@
         selectGem: function (gem) {
             if (!gemToBeSwapped[0]) {
                 gemToBeSwapped[0] = { gem: gem };
+                game.add.tween(gem).to({alpha: 0.5}, 100, Phaser.Easing.Linear.None, true);
             } else {
+                gemToBeSwapped[0].gem.alpha = 1.0;
                 if (gem === gemToBeSwapped[0].gem) {
                     gemToBeSwapped = [];
                     return;
