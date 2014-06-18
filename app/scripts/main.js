@@ -3,29 +3,34 @@
 'use strict';
 
 (function () {
-    var GEM_WIDTH = 101;
-    var GEM_HEIGHT = 112;
+    var GEM_WIDTH = 50;
+    var GEM_HEIGHT = 55;
     var GEM_SPACE = 2;
     var GEM_WIDTH_SPACED = GEM_WIDTH + GEM_SPACE;
     var GEM_HEIGHT_SPACED = GEM_HEIGHT + GEM_SPACE;
-    var BOARD_COL = 5;
-    var BOARD_ROW = 5;
+    var BOARD_COL = 10;
+    var BOARD_ROW = 10;
     var BOARD_WIDTH = GEM_WIDTH_SPACED * BOARD_COL + GEM_SPACE;
     var BOARD_HEIGHT = GEM_HEIGHT_SPACED * BOARD_ROW + GEM_SPACE;
-    var mainState = {};
-    var game = new Phaser.Game(BOARD_WIDTH, BOARD_HEIGHT, Phaser.CANVAS, 'game');
-    var gems;
-    var gemToBeSwapped = [];
-    var lowestBlanks = [];
-    var cells = [];
-    var matchesCount = [];
-    var checkMatches = false;
     var MAP = {
         north: { x: 0, y: -1 },
         south: { x: 0, y: 1 },
         east: { x: 1, y: 0 },
         west: { x: -1, y: 0 },
     };
+
+    var game = new Phaser.Game(BOARD_WIDTH, BOARD_HEIGHT, Phaser.CANVAS, 'game');
+    var mainState = {};
+    var gems;
+    var gemToBeSwapped = [];
+    var cells = [];
+    var matchesCount = [];
+    var blankColumns = [];
+    var refilledCells = [];
+    var movingGems = [];
+    var killedGems = [];
+    var inputBlocked = true;
+    var gamePaused = true;
 
     function boardLoop (callback, context) {
         for (var y = 0; y < BOARD_ROW; y ++) {
@@ -48,31 +53,6 @@
         return y * GEM_HEIGHT_SPACED + GEM_SPACE;
     }
 
-    function randomGem () {
-        return sample(['gemred', 'gemblue', 'gemgreen']);
-    }
-
-    function moveGemTo (gem, destX, destY, callback) {
-        var origGridPos = coordToGrid(gem.x, gem.y);
-        var destGridPos = coordToGrid(destX, destY);
-        var tween = game.add.tween(gem).to({x: destX, y: destY}, 200, Phaser.Easing.Linear.None);
-        tween.onStart.add(function () {
-            gem.state = 'moving';
-            cells[origGridPos.x][origGridPos.y].gem = null;
-            cells[origGridPos.x][origGridPos.y].state = 'transition';
-        });
-        tween.onComplete.add(function () {
-            cells[origGridPos.x][origGridPos.y].state = 'ready';
-
-            gem.state = 'ready';
-            cells[destGridPos.x][destGridPos.y].gem = gem;
-        });
-        if (typeof callback === 'function') {
-            tween.onComplete.add(callback, gem);
-        }
-        tween.start();
-    }
-
     function coordToGrid(x, y) {
         return {
             x: Math.round(x / GEM_WIDTH_SPACED),
@@ -80,51 +60,57 @@
         };
     }
 
-    function getLowestBlanks (gems) {
-        gems.forEachDead(function (gem) {
-            if (gem.y > 0) {
-                var gridPos = coordToGrid(gem.x, gem.y);
-                cells[gridPos.x][gridPos.y].gem = null;
-                if (!lowestBlanks[gridPos.x]) {
-                    lowestBlanks[gridPos.x] = { x: gridPos.x, y: gridPos.y, colCount: 0 };
-                }
-                lowestBlanks[gridPos.x].colCount += 1;
-                gem.y = -1 * GEM_HEIGHT_SPACED;
-            }
+    function randomGem () {
+        return sample(['gemred', 'gemblue', 'gemgreen', 'gemgold', 'gempurple', 'gemblack']);
+    }
+
+    function moveGemTo (gem, x, y, callback) {
+        movingGems.push(gem);
+        var tween = game.add.tween(gem);
+        tween.to({x: boardX(x), y: boardY(y)}, 300, Phaser.Easing.Linear.None);
+        tween.onComplete.add(function () {
+            movingGems.splice(movingGems.indexOf(gem), 1);
         });
+        if (typeof callback === 'function') {
+            tween.onComplete.add(callback, gem);
+        }
+        tween.start();
     }
 
     function moveGemsDown (gems) {
-        while (lowestBlanks.length) {
-            var pos = lowestBlanks.pop();
-            if (pos) {
-                gems.forEachAlive(function (gem) {
-                    var gridPos = coordToGrid(gem.x, gem.y);
-                    if (pos.x === gridPos.x && pos.y > gridPos.y) {
-                        var destY = gem.y + (pos.colCount * GEM_HEIGHT_SPACED);
-                        moveGemTo(gem, gem.x, destY);
+        fixGemPos(gems);
+        while (blankColumns.length) {
+            var obj = blankColumns.pop();
+            gems.forEachAlive(function (gem) {
+                if (gem.gridPos.x === obj.columnIndex && gem.gridPos.y < obj.rowIndex) {
+                    var destY = gem.gridPos.y + obj.count;
+                    if (destY > BOARD_ROW) {
+                        console.log('wooooo', destY, obj.rowIndex, gem.gridPos.y, obj.count);
+                        //moveGemTo(gem, gem.gridPos.x, destY);
+                    } else {
+                        moveGemTo(gem, gem.gridPos.x, destY);
                     }
-                });
-            }
+                }
+            });
         }
     }
 
-    function getGemAt (pool, x, y) {
+    function getGemAt (gems, x, y) {
+        if (x < 0 || x >= BOARD_COL || y < 0 || y >= BOARD_ROW) { return null; }
         var _gem;
-        pool.forEach(function (gem) {
-            var gridPos = coordToGrid(gem.x, gem.y);
-            if (x === gridPos.x && y === gridPos.y) {
+        gems.forEach(function (gem) {
+            if (x === gem.gridPos.x && y === gem.gridPos.y) {
                 _gem = gem;
             }
         });
         return _gem;
     }
+    window.getGemAt = getGemAt;
 
     function countAdjacent (gem, klass, dir, callback) {
         var value = 0;
-        var gridPos = coordToGrid(gem.x, gem.y);
         // TODO variable `gems` is global!
-        var aGem = getGemAt(gems, (gridPos.x + MAP[dir].x), (gridPos.y + MAP[dir].y));
+        var aGem = getGemAt(gems, (gem.gridPos.x + MAP[dir].x), (gem.gridPos.y + MAP[dir].y));
 
         if (aGem && klass === aGem.klass) {
             value = 1;
@@ -135,6 +121,7 @@
         }
         return value;
     }
+    window.countAdjacent = countAdjacent;
 
     function countMatchedAdjacent (gem) {
         var gemsInRow = [gem];
@@ -148,32 +135,92 @@
         var northSideGemsCount = countAdjacent(gem, gem.klass, 'north', pushGemInColumns);
         var southSideGemsCount = countAdjacent(gem, gem.klass, 'south', pushGemInColumns);
 
+        gemsInRow = gemsInRow.sort(function (a, b) {
+            return a.gridPos.x < b.gridPos.x ? -1 : a.gridPos.x > b.gridPos.x ? 1 : 0;
+        });
+
+        gemsInColumn = gemsInColumn.sort(function (a, b) {
+            return a.gridPos.y < b.gridPos.y ? -1 : a.gridPos.y > b.gridPos.y ? 1 : 0;
+        });
+
         var rows = 1 + westSideGemsCount + eastSideGemsCount;
         var columns = 1 + northSideGemsCount + southSideGemsCount;
-        return { rows: rows, columns: columns, gemsInRow: gemsInRow, gemsInColumn: gemsInColumn };
+        var uid = _.map((rows > columns ? gemsInRow : gemsInColumn), function (gem) {
+            return gem.uid();
+        }).join('');
+
+        var res = { rows: rows, columns: columns, gemsInRow: gemsInRow, gemsInColumn: gemsInColumn, uid: uid };
+        return res;
     }
+    window.countMatchedAdjacent = countMatchedAdjacent;
+    window.matchesCount = matchesCount;
 
     function killIsPossible () {
-        if (matchesCount.length === 0) { return false; }
-        return _.some(matchesCount, function (obj) {
-            return obj.rows > 2 || obj.columns > 2;
-        });
+        return matchesCount.length > 0;
     }
 
     function swapGems () {
         gemToBeSwapped.forEach(function (gem) {
-            moveGemTo(gem.gem, gem.destX, gem.destY, function () {
-                var res = countMatchedAdjacent(this);
-                matchesCount.push(res);
-            });
+            moveGemTo(gem.gem, gem.destX, gem.destY);
         });
-        checkMatches = true;
+    }
+
+    function revertGems () {
+        var temp = gemToBeSwapped[0].gem;
+        gemToBeSwapped[0].gem = gemToBeSwapped[1].gem;
+        gemToBeSwapped[1].gem = temp;
+        swapGems();
+        gemToBeSwapped = [];
     }
 
     function resetGameState () {
         gemToBeSwapped = [];
-        checkMatches = false;
         matchesCount = [];
+    }
+
+    function checkCollisions (gems) {
+        console.log('check collision', 'moving gems', movingGems.length);
+        gems.forEachAlive(function (gem) {
+            var obj = countMatchedAdjacent(gem);
+            if (obj.rows > 2 || obj.columns > 2) {
+                matchesCount.push(obj);
+            }
+        });
+        matchesCount = _.uniq(matchesCount, function (obj) {
+            return obj.uid;
+        });
+    }
+    window.cc = checkCollisions;
+
+    function getBlankColumnStore (columnIndex, rowIndex) {
+        var store = _.find(blankColumns, function (obj) {
+            return obj && obj.columnIndex === columnIndex ;
+        });
+        if (!store) {
+            store = { columnIndex: columnIndex, rowIndex: rowIndex, count: 0 };
+            blankColumns.push(store);
+        }
+        if (store.rowIndex < rowIndex) {
+            store.rowIndex = rowIndex;
+        }
+        return store;
+    }
+
+    function storeBlankColumn(columnIndex, rowIndex) {
+        var blankColumn = getBlankColumnStore(columnIndex, rowIndex);
+        blankColumn.count += 1;
+    }
+
+    function killGem (gem) {
+        movingGems.push(gem);
+        var tween = game.add.tween(gem);
+        tween.to({ alpha: 0 }, 100, Phaser.Easing.Linear.None);
+        tween.onComplete.add(function () {
+            killedGems.push(gem);
+            gem.kill();
+            movingGems.splice(movingGems.indexOf(gem), 1);
+        });
+        tween.start();
     }
 
     function killGems () {
@@ -181,67 +228,63 @@
             var obj = matchesCount.pop();
             if (obj.gemsInColumn.length > 2) {
                 _.each(obj.gemsInColumn, function (gem) {
-                    gem.kill();
+                    killGem(gem);
                 });
             }
             if (obj.gemsInRow.length > 2) {
                 _.each(obj.gemsInRow, function (gem) {
-                    gem.kill();
+                    killGem(gem);
                 });
             }
         }
         resetGameState();
     }
-
-    function revertGems () {
-        var temp = gemToBeSwapped[0].gem;
-        gemToBeSwapped[0].gem = gemToBeSwapped[1].gem;
-        gemToBeSwapped[1].gem = temp;
-        gemToBeSwapped.forEach(function (gem) {
-            moveGemTo(gem.gem, gem.destX, gem.destY);
-        });
-        resetGameState();
-    }
-
-    function gemsReady(gems) {
-        var res = true;
-        gems.forEachAlive(function (gem) {
-            if (gem.state !== 'ready') { res = false; }
-        });
-        return res;
-    }
+    window.killGems = killGems;
 
     function refillBoard(gems) {
-        var tweenComplete = true;
-        gems.forEachAlive(function (gem) {
-            if (game.tweens.isTweening(gem)) {
-                tweenComplete = false;
+        while (refilledCells.length) {
+            var cell = refilledCells.pop();
+            var gem = gems.getFirstDead();
+            if (gem) {
+                var newKlass = randomGem();
+                gem.loadTexture(newKlass);
+                gem.klass = newKlass;
+                gem.alpha = 1;
+                gem.body.collideWorldBounds = false;
+                gem.reset(boardX(cell.x), boardY(cell.y));
+                gem.gridPos = { x: cell.x, y: cell.y };
+                movingGems.push(gem);
+                var tween = game.add.tween(gem);
+                tween.from({y: -(gem.y + game.world.height)}, 300, Phaser.Easing.Linear.None);
+                tween.onComplete.add(function () {
+                    gem.body.collideWorldBounds = true;
+                    movingGems.splice(movingGems.indexOf(gem), 1);
+                });
+                tween.start();
             }
-        });
-        if (tweenComplete) {
-            boardLoop(function (x, y) {
-                var cell = cells[x][y];
-                if (!cell.gem && cell.state === 'ready') {
-                    var gem = gems.getFirstDead();
-                    if (gem) {
-                        gem.reset(cell.x, cell.y);
-                        cell.gem = gem;
-                    }
-                }
-            });
         }
     }
+
+    function fixGemPos (gems) {
+        gems.forEach(function (gem) {
+            var gridPos = coordToGrid(gem.x, gem.y);
+            gem.gridPos = gridPos;
+        });
+    }
+    window.fixGemPos = fixGemPos;
 
     mainState = {
         preload: function () {
             game.stage.backgroundColor = '#71c5cf';
-            ['gemred', 'gemblue', 'gemgreen'].forEach(function (name) {
+            ['gemred', 'gemblue', 'gemgreen', 'gemgold', 'gempurple', 'gemblack'].forEach(function (name) {
                 game.load.image(name, '../images/'+name+'.png');
             }.bind(this));
             game.load.image('particlwWhite', '../images/white.png');
         },
 
         create: function () {
+            var done = 0;
+            var cellsCount = BOARD_COL * BOARD_ROW;
             game.physics.startSystem(Phaser.Physics.ARCADE);
 
             this.gems = game.add.group();
@@ -253,43 +296,77 @@
                 var klass, northGems, westGems, gem;
                 do {
                     klass = randomGem();
-                    var _gem = { x: (x*GEM_WIDTH_SPACED), y: (y*GEM_HEIGHT_SPACED) };
+                    var _gem = { x: (x*GEM_WIDTH_SPACED), y: (y*GEM_HEIGHT_SPACED), gridPos: { x: x, y: y } };
                     northGems = countAdjacent(_gem, klass, 'north');
                     westGems = countAdjacent(_gem, klass, 'west');
                 } while (northGems >= 2 || westGems >= 2);
 
                 gem = this.gems.create(boardX(x), boardY(y), klass);
+                gem.gridPos = { x: x, y: y };
                 gem.klass = klass;
                 gem.inputEnabled = true;
-                gem.state = 'ready';
                 gem.events.onInputDown.add(this.selectGem.bind(this));
 
+                gem.uid = function () {
+                    return this.gridPos.x + '' + this.gridPos.y;
+                };
+
                 if (!cells[x]) { cells[x] = []; }
-                cells[x][y] = { x: boardX(x), y: boardY(y), gem: gem, state: 'ready' };
+                cells[x][y] = { x: boardX(x), y: boardY(y), gem: gem };
+
             }, this);
 
             this.gems.setAll('body.collideWorldBounds', true);
             this.gems.forEach(function (gem) {
-                game.add.tween(gem).from({y: (gem.y - game.world.height)}, 600, Phaser.Easing.Bounce.Out, true);
+                var tween = game.add.tween(gem);
+                tween.from({y: (gem.y - game.world.height)}, 300, Phaser.Easing.Bounce.Out);
+                tween.onComplete.add(function () {
+                    done++;
+                    gamePaused = (done !== cellsCount);
+                });
+                tween.start();
             });
+            window.game = game;
+            window.gems = this.gems;
         },
 
         update: function () {
-            refillBoard(this.gems);
-
-            if (gemsReady(this.gems) && !checkMatches && gemToBeSwapped.length === 2 && !matchesCount.length) {
-                return swapGems();
-            }
-            if (gemsReady(this.gems) && gemToBeSwapped.length === 2 && matchesCount.length === 2) {
-                if (killIsPossible()) {
-                    return killGems();
+            if (!gamePaused) {
+                fixGemPos(this.gems);
+                if (inputBlocked) {
+                    if (!movingGems.length && killedGems.length) {
+                        killedGems = _.uniq(killedGems, function (gem) {
+                            return gem.uid();
+                        });
+                        _.each(killedGems, function (gem) {
+                            storeBlankColumn(gem.gridPos.x, gem.gridPos.y);
+                        });
+                        _.each(blankColumns, function (obj) {
+                            for (var i = 0; i < obj.count; i++) {
+                                refilledCells.push({ x: obj.columnIndex, y: i });
+                            }
+                        });
+                        killedGems = [];
+                    }
+                    if (!movingGems.length && !killedGems.length) {
+                        moveGemsDown(this.gems);
+                    }
+                    if (!movingGems.length && !killedGems.length) {
+                        refillBoard(this.gems);
+                    }
+                    if (!movingGems.length && !killedGems.length) {
+                        checkCollisions(this.gems);
+                        if (killIsPossible()) {
+                            killGems();
+                        } else {
+                            inputBlocked = false;
+                        }
+                    }
                 } else {
-                    return revertGems();
+                    if (!movingGems.length && gemToBeSwapped.length === 2) {
+                        revertGems();
+                    }
                 }
-            }
-            if (gemsReady(this.gems)) {
-                getLowestBlanks(this.gems);
-                moveGemsDown(this.gems);
             }
         },
 
@@ -298,20 +375,24 @@
         },
 
         selectGem: function (gem) {
-            if (!gemToBeSwapped[0]) {
-                gemToBeSwapped[0] = { gem: gem };
-                game.add.tween(gem).to({alpha: 0.5}, 100, Phaser.Easing.Linear.None, true);
-            } else {
-                gemToBeSwapped[0].gem.alpha = 1.0;
-                if (gem === gemToBeSwapped[0].gem) {
-                    gemToBeSwapped = [];
-                    return;
+            if (!inputBlocked) {
+                if (!gemToBeSwapped[0]) {
+                    gemToBeSwapped[0] = { gem: gem };
+                    game.add.tween(gem).to({alpha: 0.5}, 100, Phaser.Easing.Linear.None, true);
+                } else {
+                    gemToBeSwapped[0].gem.alpha = 1.0;
+                    if (gem === gemToBeSwapped[0].gem) {
+                        gemToBeSwapped = [];
+                        return;
+                    }
+                    gemToBeSwapped[0].destX = gem.gridPos.x;
+                    gemToBeSwapped[0].destY = gem.gridPos.y;
+                    gemToBeSwapped[1] = { gem: gem };
+                    gemToBeSwapped[1].destX = gemToBeSwapped[0].gem.gridPos.x;
+                    gemToBeSwapped[1].destY = gemToBeSwapped[0].gem.gridPos.y;
+                    inputBlocked = true;
+                    swapGems();
                 }
-                gemToBeSwapped[0].destX = gem.x;
-                gemToBeSwapped[0].destY = gem.y;
-                gemToBeSwapped[1] = { gem: gem };
-                gemToBeSwapped[1].destX = gemToBeSwapped[0].gem.x;
-                gemToBeSwapped[1].destY = gemToBeSwapped[0].gem.y;
             }
         },
     };
