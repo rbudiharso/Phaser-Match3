@@ -137,18 +137,18 @@ _.extend(Phaser.Sprite.prototype, {
             bounceOut: Phaser.Easing.Bounce.Out
         };
         options = options || {};
-        var easing = options.easing || 'bounceOut';
+        var easing = options.easing || 'linear';
         var distance = Math.sqrt(Math.pow(Math.abs(x - this.point.x), 2) + Math.pow(Math.abs(y - this.point.y), 2));
-        var duration = options.duration || 250;
+        var duration = options.duration || 150;
         var tween = game.add.tween(this);
         this.isSettled = false;
 
-        tween.to({ x: this.translateX(x), y: this.translateY(y) }, distance*duration, easingMap[easing]);
+        tween.to({ x: this.translateX(x), y: this.translateY(y) }, duration, easingMap[easing]);
         tween.onStart.add(function () {
         }, this);
         tween.onComplete.add(function () {
-            this.isSettled = true;
             this.updateCurrentPoint();
+            this.isSettled = true;
         }, this);
         tween.start();
     },
@@ -210,34 +210,28 @@ var state = {
                     inputAllowed = false;
                 }
             } else {
-                if (this.canFindMatches()) {
-                    this.findMatches();
-                }
-                if (this.matchesFound()) {
-                    this.markMatchesForRemoval();
-                } else {
-                    if (swapList.length === 2) {
-                        swapGems();
-                        swapList = [];
-                    }
-                    inputAllowed = true;
-                }
-                if (this.canRemoveMatches()) {
-                    this.removeMatches();
+                if (this.getEmptyCells().length) {
                     this.bringDownGems();
+                } else {
+                    this.findMatches();
+                    if (this.matchesFound()) {
+                        this.markMatchesForRemoval();
+                        this.removeMatches();
+                    } else {
+                        if (swapList.length === 2) {
+                            swapGems();
+                            swapList = [];
+                        }
+                        inputAllowed = true;
+                    }
                 }
             }
-        } else {
-            //console.log('not settled');
         }
     },
     gemsIsFixed: function () {
         return _.all(gems.children, function (gem) {
             return gem.isSettled;
         });
-    },
-    canFindMatches: function () {
-        return this.gemsIsFixed();
     },
     findMatches: function () {
         var group = gems;
@@ -253,9 +247,6 @@ var state = {
             return gem.uid;
         }).value();
         return matchesList.length > 0;
-    },
-    canRemoveMatches: function () {
-        return this.gemsIsFixed() && killedGems.length > 0;
     },
     markMatchesForRemoval: function () {
         while (matchesList.length) {
@@ -279,33 +270,27 @@ var state = {
             //tween.start();
         }
     },
+    getEmptyCells: function () {
+        var empties = [];
+        for (var y = ROW_COUNT-1; y >= 0; y--) {
+            for (var x = COLUMN_COUNT-1; x >= 0; x--) {
+                var gem = gems.getSprite(x, y);
+                if (!gem) { empties.push({x: x, y: y}); }
+            }
+        }
+        return empties;
+    },
     bringDownGems: function () {
-        var emptyCellCountPerColumn = [];
-        while (emptyCells.length) {
-            var point = emptyCells.pop();
-            if (!emptyCellCountPerColumn[point.x]) {
-                emptyCellCountPerColumn[point.x] = { index: point.x, count: 0, minY: point.y };
-            }
-            if (point.y < emptyCellCountPerColumn[point.x].minY) {
-                emptyCellCountPerColumn[point.x].minY = point.y;
-            }
-            emptyCellCountPerColumn[point.x].count += 1;
-        }
-        emptyCellCountPerColumn = _.compact(emptyCellCountPerColumn);
-        while (emptyCellCountPerColumn.length) {
-            var columnInfo = emptyCellCountPerColumn.pop();
-            var cellInCoumns = _.select(gems.children, function (gem) {
-                return gem.point.x === columnInfo.index && gem.point.y < columnInfo.minY;
-            });
-            _.each(cellInCoumns, function (gem) {
-                gem.moveDown(columnInfo.count);
+        var empties = this.getEmptyCells();
+        while (empties.length) {
+            var point = empties.shift();
+            _.each(gems.children, function (gem) {
+                if (gem.point.x === point.x && gem.point.y < point.y) {
+                    gem.moveDown(1);
+                }
             });
         }
-        swapList = [];
-        matchesList = [];
-        killedGems = [];
-        emptyCells = [];
-    }
+    },
 };
 
 game.state.add('main', state);
