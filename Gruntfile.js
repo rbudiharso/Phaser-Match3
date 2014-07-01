@@ -195,10 +195,16 @@ module.exports = function (grunt) {
         // Performs rewrites based on rev and the useminPrepare configuration
         usemin: {
             options: {
-                assetsDirs: ['<%= config.dist %>', '<%= config.dist %>/images']
+                assetsDirs: ['<%= config.dist %>', '<%= config.dist %>/images'],
+                patterns: {
+                    js: [
+                        [/(gemred\.png|gemblue\.png|gemgreen\.png|gemgold\.png|gemblack\.png|gempurple\.png)/gm, 'replace image name with revved name in js files']
+                    ]
+                }
             },
             html: ['<%= config.dist %>/{,*/}*.html'],
-            css: ['<%= config.dist %>/styles/{,*/}*.css']
+            css: ['<%= config.dist %>/styles/{,*/}*.css'],
+            js: ['<%= config.dist %>/scripts/{,*/}*.js']
         },
 
         // The following *-min tasks produce minified files in the dist folder

@@ -12,7 +12,7 @@ var CELL_WIDTH_SPACED  = CELL_WIDTH + CELL_SPACE;
 var CELL_HEIGHT_SPACED = CELL_HEIGHT + CELL_SPACE;
 var BOARD_WIDTH        = CELL_WIDTH_SPACED * COLUMN_COUNT + CELL_SPACE;
 var BOARD_HEIGHT       = CELL_HEIGHT_SPACED * ROW_COUNT + CELL_SPACE;
-var gemNames           = ['gemred', 'gemblue', 'gemgreen', 'gemgold', 'gempurple', 'gemblack'];
+var gemNames           = ['gemred.png', 'gemblue.png', 'gemgreen.png', 'gemgold.png', 'gempurple.png', 'gemblack.png'];
 
 var game  = new Phaser.Game(BOARD_WIDTH, BOARD_HEIGHT, Phaser.CANVAS, 'game');
 var gems = [];
@@ -162,7 +162,7 @@ var state = {
     preload: function () {
         game.stage.backgroundColor = '#71c5cf';
         _.each(gemNames, function (name) {
-            game.load.image(name, '../images/'+name+'.png');
+            game.load.image(name, '/images/'+name);
         }, this);
     },
 
