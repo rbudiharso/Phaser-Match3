@@ -260,14 +260,15 @@ var state = {
     removeMatches: function () {
         while (killedGems.length > 0) {
             var gem = killedGems.shift();
-            emptyCells.push({ x: gem.point.x, y: gem.point.y });
-            gem.destroy();
-            //var tween = game.add.tween(gem);
-            //tween.to({ alpha: 0 }, 100, Phaser.Easing.Linear.None);
-            //tween.onComplete.add(function () {
-                //gem.kill();
-            //});
-            //tween.start();
+            (function (sprite) {
+                emptyCells.push({ x: sprite.point.x, y: sprite.point.y });
+                var tween = game.add.tween(sprite);
+                tween.to({ alpha: 0 }, 100, Phaser.Easing.Linear.None);
+                tween.onComplete.add(function () {
+                    sprite.destroy();
+                });
+                tween.start();
+            })(gem);
         }
     },
     getEmptyCells: function () {
