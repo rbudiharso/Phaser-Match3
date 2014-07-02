@@ -20,6 +20,7 @@ var swapList = [];
 var matchesList = [];
 var killedGems = [];
 var emptyCells = [];
+var movedGems = [];
 var inputAllowed = false;
 
 function swapGems () {
@@ -137,7 +138,7 @@ _.extend(Phaser.Sprite.prototype, {
             bounceOut: Phaser.Easing.Bounce.Out
         };
         options = options || {};
-        var easing = options.easing || 'linear';
+        var easing = options.easing || 'bounceOut';
         var distance = Math.sqrt(Math.pow(Math.abs(x - this.point.x), 2) + Math.pow(Math.abs(y - this.point.y), 2));
         var duration = options.duration || 150;
         var tween = game.add.tween(this);
@@ -282,16 +283,33 @@ var state = {
         return empties;
     },
     bringDownGems: function () {
-        var empties = this.getEmptyCells();
-        while (empties.length) {
-            var point = empties.shift();
-            _.each(gems.children, function (gem) {
-                if (gem.point.x === point.x && gem.point.y < point.y) {
-                    gem.moveDown(1);
-                }
-            });
+        this.calculateMoveDistance();
+        while (movedGems.length) {
+            var obj = movedGems.pop();
+            obj.gem.moveDown(obj.distance);
         }
     },
+    calculateMoveDistance: function () {
+        for (var x = COLUMN_COUNT-1; x >= 0; x--) {
+            var distance = 0;
+            var gem;
+            for (var y = ROW_COUNT-1; y >= 0; y--) {
+                gem = gems.getSprite(x, y);
+                if (gem) {
+                    if (distance > 0) {
+                        movedGems.push({gem: gem, distance: distance});
+                    }
+                } else {
+                    distance++;
+                }
+            }
+            _.chain(gems.children).select(function (gem) {
+                return gem.point.x === x && gem.point.y < 0;
+            }).each(function (gem) {
+                movedGems.push({gem: gem, distance: distance});
+            }).value();
+        }
+    }
 };
 
 game.state.add('main', state);
