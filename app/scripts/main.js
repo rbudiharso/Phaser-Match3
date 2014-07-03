@@ -1,4 +1,4 @@
-/* jslint browser: true */
+/* jslint browser: true, loopfunc: true */
 /* globals Phaser: true, _: true */
 
 'use strict';
