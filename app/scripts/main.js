@@ -139,8 +139,7 @@ _.extend(Phaser.Sprite.prototype, {
         };
         options = options || {};
         var easing = options.easing || 'bounceOut';
-        var distance = Math.sqrt(Math.pow(Math.abs(x - this.point.x), 2) + Math.pow(Math.abs(y - this.point.y), 2));
-        var duration = options.duration || 150;
+        var duration = options.duration || 400;
         var tween = game.add.tween(this);
         this.isSettled = false;
 
@@ -264,7 +263,7 @@ var state = {
             (function (sprite) {
                 emptyCells.push({ x: sprite.point.x, y: sprite.point.y });
                 var tween = game.add.tween(sprite);
-                tween.to({ alpha: 0 }, 100, Phaser.Easing.Linear.None);
+                tween.to({ alpha: 0 }, 250, Phaser.Easing.Linear.None);
                 tween.onComplete.add(function () {
                     sprite.destroy();
                 });
